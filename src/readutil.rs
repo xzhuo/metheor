@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
-
+use fibertools_rs::basemods::BaseMods;
 use crate::bamutil;
 
 pub type QuartetPattern = usize;
@@ -37,23 +37,28 @@ impl BismarkRead {
             }
         }
 
-        match r.aux(b"XM") {
-            Ok(value) => {
-                if let Aux::String(xm) = value {
-                    // if value is a type of Aux::String, run:
-                    let cpgs = get_cpgs(r, xm);
-                    Self {
-                        start_pos,
-                        end_pos,
-                        cpgs,
-                    }
-                } else {
-                    panic!("Error reading XM tag in BAM record. Make sure the reads are aligned using Bismark!");
+        if let Ok(Aux::String(xm)) = r.aux(b"XM") {
+            // if value is a type of Aux::String, run:
+            let cpgs = get_cpgs(r, xm);
+            Self {
+                start_pos,
+                end_pos,
+                cpgs,
+            }
+        } else if let Ok(Aux::String(_)) = r.aux(b"MM") {
+            if let Ok(Aux::ArrayU8(_)) = r.aux(b"ML") {
+                // if value is a type of Aux::String, run:
+                let cpgs = get_basemod_cpgs(r);
+                Self {
+                    start_pos,
+                    end_pos,
+                    cpgs,
                 }
+            } else {
+                panic!("Error reading ML tag in BAM record. Make sure the all reads containing matching MM/ML tags!");
             }
-            Err(_) => {
-                panic!("Error reading XM tag in BAM record. Make sure the reads are aligned using Bismark!");
-            }
+        } else {
+            panic!("Error reading XM/MM tag in BAM record. Make sure the reads are aligned using Bismark or containg MM/ML tags!");
         }
     }
 
@@ -343,6 +348,13 @@ impl Clone for CpGPosition {
     fn clone(&self) -> Self {
         *self
     }
+}
+
+fn get_basemod_cpgs(r: &Record) -> Vec<CpG> {
+    let mut cpgs: Vec<CpG> = Vec::new();
+    let mods = BaseMods::new(r, 0);
+    println!("{:?}", mods);
+    return cpgs
 }
 
 fn get_cpgs(r: &Record, xm: &str) -> Vec<CpG> {
